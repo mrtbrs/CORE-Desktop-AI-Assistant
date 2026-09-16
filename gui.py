@@ -27,12 +27,6 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta
 
-# --- YENİ DONANIM SENSÖR KÜTÜPHANELERİ ---
-try:
-    import GPUtil
-except ImportError:
-    GPUtil = None
-
 # --- PENCERE YÖNETİMİ İÇİN ---
 import win32gui
 import win32con
@@ -64,7 +58,7 @@ try:
         system_ops, system_watcher, weather_forecast, web_search, whatsapp
     )
 except Exception as e:
-    print(f"Modül yükleme uyarısı: {e}")
+    pass
 
 from main import run_core, start_global_hotkey
 
@@ -277,43 +271,54 @@ class AnimatedOrbWidget(QWidget):
         bright_color = QColor(base_color); bright_color.setAlpha(255)
         painter.setBrush(QBrush(bright_color)); painter.drawEllipse(int(cx - inner_core_r), int(cy - inner_core_r), int(inner_core_r*2), int(inner_core_r*2))
 
+class SysWorker(QThread):
+    update_signal = pyqtSignal(float, float, float, float, str)
+    def __init__(self):
+        super().__init__()
+        self.is_running = True
+    def run(self):
+        while self.is_running:
+            try:
+                c = psutil.cpu_percent(interval=None)
+                r = psutil.virtual_memory()
+                gpu_text = "GPU Usage: Kapalı"
+                self.update_signal.emit(c, r.percent, r.used / (1024**3), r.total / (1024**3), gpu_text)
+            except Exception:
+                pass
+            time.sleep(1) 
+    def stop(self):
+        self.is_running = False
+
 class WeatherWorker(QThread):
     weather_ready = pyqtSignal(str)
     def __init__(self, location): 
         super().__init__()
         self.location = location
-        
     def run(self):
         try:
             sehir = self.location.split(",")[-1].strip()
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(sehir)}&count=1&language=tr&format=json"
             geo_resp = requests.get(geo_url, timeout=5).json()
-            
             if "results" in geo_resp and len(geo_resp["results"]) > 0:
                 lat = geo_resp["results"][0]["latitude"]
                 lon = geo_resp["results"][0]["longitude"]
-                
                 weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
                 w_resp = requests.get(weather_url, timeout=5).json()
-                
                 if "current_weather" in w_resp:
                     temp = w_resp["current_weather"]["temperature"]
                     code = w_resp["current_weather"]["weathercode"]
-                    
                     durum = "Açık"
                     if code in [1, 2, 3]: durum = "Parçalı Bulutlu"
                     elif code in [45, 48]: durum = "Sisli"
                     elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]: durum = "Yağmurlu"
                     elif code in [71, 73, 75, 77, 85, 86]: durum = "Karlı"
                     elif code in [95, 96, 99]: durum = "Fırtınalı"
-                    
                     self.weather_ready.emit(f"☁️ {temp}°C {durum}")
                 else:
                     self.weather_ready.emit("☁️ Veri Alınamadı")
             else:
                 self.weather_ready.emit("☁️ Şehir Bulunamadı")
         except Exception as e: 
-            print(f"Hava Durumu Hatası: {e}")
             self.weather_ready.emit("☁️ Bağlantı Yok")
 
 class FinanceWorker(QThread):
@@ -453,7 +458,6 @@ class ChatWorker(QThread):
                             os.system("start https://web.whatsapp.com/")
                             c = f"Rehberde kişi bulunamadığı için sadece WhatsApp Web açıldı {self.salutation}."
                     except Exception as e:
-                        print(f"WhatsApp Hatası: {e}")
                         os.system("start https://web.whatsapp.com/")
                         c = f"WhatsApp Web açıldı {self.salutation}."
                 else:
@@ -495,6 +499,7 @@ class ChatWorker(QThread):
                 c = f"Microsoft Excel başlatılıyor {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
+            # --- EVRENSEL DOSYA YOLLARI (OPEN-SOURCE) ---
             dosya_tetikleyiciler = ["okul", "belge", "indir", "bilgisayar", "dosya", "klasor", "klaosr", "proje", "gezgin"]
             if any(w in clean_text_tr for w in dosya_tetikleyiciler):
                 klasor_acildi = False
@@ -590,7 +595,6 @@ class ChatWorker(QThread):
                     screen_processor.capture_screen_description()
                     self.image_path = "actions/temp_screen.png"
                 except Exception as e:
-                    print(f"Ekran okuma hatası: {e}")
                     screen_path = f"screenshot_{int(time.time())}.png"
                     ImageGrab.grab().save(screen_path); self.image_path = screen_path
                 self.gemini_prompt = "Şu an ekranımdaki görüntüyü incele ve soruma cevap ver: " + self.gemini_prompt
@@ -757,8 +761,7 @@ class ChatWorker(QThread):
                     model = genai.GenerativeModel(self.model_name, system_instruction=f"Senin adın {self.ai_name}. Asla markdown kullanma. Sahibine '{self.salutation}' diye hitap et.")
                     c = model.generate_content(content_to_send).text.strip().replace("**", "").replace("*", "")
                     self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); success = True; break 
-                except Exception as api_e: 
-                    print(f"API Hatası: {api_e}")
+                except Exception: 
                     continue 
             
             if not success: 
@@ -771,9 +774,8 @@ class ChatWorker(QThread):
                     
             self.state_changed.emit("bekliyor")
             
-        except Exception as e: 
+        except Exception: 
             self.response_ready.emit(f">> [SİSTEM HATASI]: Komut işlenirken bir sorun oluştu.")
-            print(f"ChatWorker Kritik Hata: {e}")
             self.state_changed.emit("bekliyor")
     
     def speak_text(self, text):
@@ -787,8 +789,7 @@ class ChatWorker(QThread):
             
             try:
                 asyncio.run(gen())
-            except Exception as async_err:
-                print(f"Ses İndirme Hatası: {async_err}")
+            except Exception:
                 return
 
             if os.path.exists(af):
@@ -804,8 +805,8 @@ class ChatWorker(QThread):
                 
                 try: os.remove(af)
                 except: pass
-        except Exception as general_err: 
-            print(f"Kritik Ses Motoru Hatası Yakalandı: {general_err}")
+        except Exception: 
+            pass
 
 class CoreInterface(QMainWindow):
     def __init__(self):
@@ -837,7 +838,10 @@ class CoreInterface(QMainWindow):
         self.latest_clip = ""; self.last_clip_time = 0
         
         self.setWindowTitle(f"{self.ai_name} — Centralized Operational Response Engine")
-        self.setGeometry(50, 50, 1400, 850)
+        
+        # Tam Ekran ayarı
+        self.setMinimumSize(1400, 850)
+        self.showMaximized()
         
         main_widget = QWidget(self)
         self.setCentralWidget(main_widget)
@@ -867,10 +871,9 @@ class CoreInterface(QMainWindow):
         self.ram_label = QLabel("RAM Usage: %0", self)
         self.ram_bar = QProgressBar(self); self.ram_bar.setMaximum(100); self.ram_bar.setFixedHeight(8) 
         
-        self.gpu_label = QLabel("GPU Usage: Ölçülüyor...", self)
         self.net_label = QLabel(self); self.net_label.hide() 
         
-        for w in [self.cpu_label, self.cpu_bar, self.ram_label, self.ram_bar, self.gpu_label]: sys_layout.addWidget(w)
+        for w in [self.cpu_label, self.cpu_bar, self.ram_label, self.ram_bar]: sys_layout.addWidget(w)
         left_layout.addWidget(self.sys_frame); left_layout.addSpacing(4) 
         
         self.tasks_title = QLabel("BUGÜNKÜ YAPILACAKLAR", self); self.tasks_title.hide()
@@ -937,7 +940,14 @@ class CoreInterface(QMainWindow):
         self.fetch_weather() 
         self.finance_worker = FinanceWorker(); self.finance_worker.rates_ready.connect(self.update_finance_ui); self.finance_worker.start()
         self.finance_timer = QTimer(self); self.finance_timer.timeout.connect(self.finance_worker.start); self.finance_timer.start(28800000) 
-        self.sys_timer = QTimer(self); self.sys_timer.timeout.connect(self.update_sys_monitor); self.sys_timer.start(1000) 
+        
+        self.sys_worker = SysWorker()
+        self.sys_worker.update_signal.connect(self.update_sys_ui)
+        self.sys_worker.start()
+        
+        self.clock_timer = QTimer(self)
+        self.clock_timer.timeout.connect(self.update_clock_and_notes)
+        self.clock_timer.start(1000) 
         
         center_layout = QVBoxLayout(); center_layout.setAlignment(Qt.AlignCenter) 
         self.ai_name_label = QLabel(self.ai_name, self); self.ai_name_label.setAlignment(Qt.AlignCenter); center_layout.addWidget(self.ai_name_label)
@@ -959,7 +969,8 @@ class CoreInterface(QMainWindow):
         else: self.yt_icon_lbl.setText("🎵")
         self.yt_icon_lbl.setCursor(Qt.PointingHandCursor)
         
-        # Evrensel YouTube Music Linki
+        # --- AÇIK KAYNAK İÇİN GENEL YOUTUBE MUSIC LİNKİ ---
+        # Kullanıcılar kendi çalma listelerini buraya ekleyebilirler.
         self.yt_icon_lbl.mousePressEvent = lambda event: os.system("start https://music.youtube.com/")
             
         self.btn_prev = QPushButton("⏮", self); self.btn_play = QPushButton("⏯", self); self.btn_next = QPushButton("⏭", self)
@@ -1158,6 +1169,7 @@ class CoreInterface(QMainWindow):
 
     def closeEvent(self, event):
         if hasattr(self, 'continuous_worker'): self.continuous_worker.stop()
+        if hasattr(self, 'sys_worker'): self.sys_worker.stop()
         self.save_memory(); event.accept()
 
     def apply_styles(self):
@@ -1183,7 +1195,7 @@ class CoreInterface(QMainWindow):
         self.loc_label.setStyleSheet(f"border: none; font-family: 'Consolas'; font-size: 11px; color: {mt}; background: transparent;")
         self.weather_label.setStyleSheet(f"border: none; font-family: 'Consolas'; font-size: 11px; color: {tc}; background: transparent;")
         
-        for lbl in [self.cpu_label, self.ram_label, self.net_label, getattr(self, 'gpu_label', None)]: 
+        for lbl in [self.cpu_label, self.ram_label, getattr(self, 'net_label', None)]: 
             if lbl:
                 lbl.setStyleSheet(f"font-family: 'Consolas'; font-size: 11px; margin-top: 2px; color: {mt}; border: none; background: transparent;")
                 
@@ -1233,24 +1245,15 @@ class CoreInterface(QMainWindow):
 
     def fetch_weather(self): self.ww = WeatherWorker(self.current_location); self.ww.weather_ready.connect(lambda w: self.weather_label.setText(w)); self.ww.start()
 
-    def update_sys_monitor(self):
+    def update_clock_and_notes(self):
         self.clock_label.setText(f"🕒 {datetime.now().strftime('%H:%M:%S')}")
-        c = psutil.cpu_percent(); self.cpu_label.setText(f"CPU Usage: %{c}"); self.cpu_bar.setValue(int(c))
-        r = psutil.virtual_memory(); self.ram_label.setText(f"RAM Usage: %{r.percent} ({r.used / (1024**3):.1f} / {r.total / (1024**3):.1f} GB)"); self.ram_bar.setValue(int(r.percent))
-        
-        try:
-            if GPUtil:
-                gpus = GPUtil.getGPUs()
-                if gpus:
-                    self.gpu_label.setText(f"GPU Usage: %{gpus[0].load * 100:.1f}")
-                else:
-                    self.gpu_label.setText("GPU Usage: Bulunamadı")
-            else:
-                self.gpu_label.setText("GPU Usage: Kütüphane Eksik")
-        except:
-            self.gpu_label.setText("GPU Usage: Hata")
-
         self.sync_obsidian_notes()
+
+    def update_sys_ui(self, cpu, ram_pct, ram_used, ram_total, gpu_text):
+        self.cpu_label.setText(f"CPU Usage: %{cpu}")
+        self.cpu_bar.setValue(int(cpu))
+        self.ram_label.setText(f"RAM Usage: %{ram_pct} ({ram_used:.1f} / {ram_total:.1f} GB)")
+        self.ram_bar.setValue(int(ram_pct))
 
     def select_file(self):
         fn, _ = QFileDialog.getOpenFileName(self, "Dosya Seç", "", "Resim Dosyaları (*.png *.jpg *.jpeg);;Tüm Dosyalar (*.*)")
@@ -1305,7 +1308,7 @@ class CoreInterface(QMainWindow):
                 self.sync_obsidian_notes()
                 self.append_to_log(f">> [OBSIDIAN]: '{query}' içeren not silindi.")
             except Exception as e: 
-                print(f"Not silme hatası: {e}")
+                pass
         elif action_type == "save_clipboard":
             if hasattr(self, 'latest_clip') and self.latest_clip:
                 self.add_obsidian_note(f"Panodan Kaydedildi: {self.latest_clip}"); self.latest_clip = "" 

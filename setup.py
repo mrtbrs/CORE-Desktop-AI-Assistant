@@ -25,8 +25,7 @@ def build_core():
         "--add-data=orbitron.ttf;.",
         "--add-data=icon.ico;.",
         
-        # PyInstaller gizli importlar
-        "--hidden-import=GPUtil",
+        # PyInstaller gizli importlar (GPUtil silindi)
         "--hidden-import=wmi",
         "--hidden-import=win32com",
         "--hidden-import=edge_tts",
