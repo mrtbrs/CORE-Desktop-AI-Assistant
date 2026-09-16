@@ -1,0 +1,16 @@
+# Özel Veriler ve API Anahtarları (Kesinlikle gitmeyecek)
+core_memory.json
+
+# PyInstaller, Build ve Exe Dosyaları
+build/
+dist/
+*.spec
+*.exe
+
+# Geçici Sesler ve Önbellek
+__pycache__/
+actions/__pycache__/
+core/__pycache__/
+*.mp3
+*.png
+*.jpg
