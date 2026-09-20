@@ -1,7 +1,7 @@
-SpeechRecognition
+
 pyttsx3
 pyaudio
-google-generativeai
+
 PyQt5>=5.15.0
 google-generativeai>=0.3.0
 pygame>=2.0.0
@@ -13,3 +13,4 @@ requests>=2.28.0
 pywin32>=306
 GPUtil>=1.4.0
 pyperclip
+pyautogui
