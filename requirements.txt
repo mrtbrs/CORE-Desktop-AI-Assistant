@@ -12,3 +12,4 @@ psutil>=5.9.0
 requests>=2.28.0
 pywin32>=306
 GPUtil>=1.4.0
+pyperclip
