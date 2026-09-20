@@ -3,15 +3,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 
 import sys
 import os
-
-# --- GÖRÜNMEZ MOD ÇÖKME KORUMASI VE PYGAME SUSTURUCU ---
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w")
-if sys.stderr is None:
-    sys.stderr = open(os.devnull, "w")
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-# -------------------------------------------------------
-
+import random
 import threading
 import time
 import subprocess
@@ -27,6 +19,14 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta
 
+# --- GÖRÜNMEZ MOD ÇÖKME KORUMASI VE PYGAME SUSTURUCU ---
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+# -------------------------------------------------------
+
 # --- PENCERE YÖNETİMİ İÇİN ---
 import win32gui
 import win32con
@@ -37,9 +37,10 @@ from PyQt5.QtWidgets import (
     QPushButton, QFileDialog, QProgressBar, QDialog, 
     QFormLayout, QComboBox, QDialogButtonBox, QFrame, 
     QCheckBox, QGroupBox, QCalendarWidget, QListWidget, 
-    QGridLayout, QInputDialog, QGraphicsDropShadowEffect
+    QGridLayout, QInputDialog, QGraphicsDropShadowEffect,
+    QColorDialog 
 )
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QBrush, QIcon, QFontDatabase
+from PyQt5.QtGui import QPixmap, QPainter, QPen, QColor, QBrush, QIcon, QFontDatabase, QFont
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QSize
 
 # API ve Yan Kütüphaneler
@@ -49,7 +50,7 @@ import speech_recognition as sr
 from PIL import ImageGrab
 import PIL.Image
 
-# C.O.R.E. AKSİYON MODÜLLERİ (Tam Entegrasyon)
+# C.O.R.E. AKSİYON MODÜLLERİ
 try:
     from actions import (
         browser_control, bus_booking, coding, computer_control, desktop, 
@@ -70,26 +71,16 @@ VK_MEDIA_NEXT_TRACK = 0xB0
 VK_MEDIA_PREV_TRACK = 0xB1
 VK_MEDIA_PLAY_PAUSE = 0xB3
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- ASENKRON ÇALIŞTIRICI (Kasma Engelleme) ---
+def run_async(cmd):
+    threading.Thread(target=lambda: os.system(cmd), daemon=True).start()
+
 def resource_path(relative_path):
     try: 
         base_path = sys._MEIPASS
     except Exception: 
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-ILLER = [
-    "adana", "adiyaman", "afyonkarahisar", "agri", "aksaray", "amasya", "ankara", "antalya", 
-    "ardahan", "artvin", "aydin", "balikesir", "bartin", "batman", "bayburt", "bilecik", 
-    "bingol", "bitlis", "bolu", "burdur", "bursa", "canakkale", "cankiri", "corum", 
-    "denizli", "diyarbakir", "duzce", "edirne", "elazig", "erzincan", "erzurum", "eskisehir", 
-    "gaziantep", "giresun", "gumushane", "hakkari", "hatay", "igdir", "isparta", "istanbul", 
-    "izmir", "kahramanmaras", "karabuk", "karaman", "kars", "kastamonu", "kayseri", "kirikkale", 
-    "kirklareli", "kirsehir", "kilis", "kocaeli", "konya", "kutahya", "malatya", "manisa", 
-    "mardin", "mersin", "mugla", "mus", "nevsehir", "nigde", "ordu", "osmaniye", "rize", 
-    "sakarya", "samsun", "siirt", "sinop", "sivas", "sanliurfa", "sirnak", "tekirdag", 
-    "tokat", "trabzon", "tunceli", "usak", "van", "yalova", "yozgat", "zonguldak"
-]
 
 def turkce_karakter_temizle(metin):
     tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
@@ -105,17 +96,17 @@ class DayManagerDialog(QDialog):
         self.setFixedSize(420, 600)
         
         self.setStyleSheet(f"""
-            QDialog {{ background-color: #0f111a; }}
+            QDialog {{ background-color: #0f111a; border: 1px solid {theme_color}; }}
             QLabel {{ color: {theme_color}; font-family: 'Consolas'; font-weight: bold; font-size: 12px; }}
-            QListWidget {{ background-color: rgba(27, 27, 43, 0.7); border: 1px solid {theme_color}; border-radius: 8px; padding: 8px; color: #e0e0e0; outline: none; }}
-            QListWidget::item:selected {{ background-color: {theme_color}; color: #000; font-weight: bold; }}
-            QLineEdit, QComboBox {{ background-color: rgba(15, 20, 30, 0.8); border: 1px solid #3d3d5c; border-radius: 6px; padding: 8px; color: #fff; font-family: 'Consolas'; }}
-            QLineEdit:focus, QComboBox:focus {{ border: 1px solid {theme_color}; background-color: rgba(27, 27, 43, 0.9); }}
-            QPushButton {{ background-color: #1b1b2b; border: 1px solid {theme_color}; border-radius: 6px; padding: 10px; color: {theme_color}; font-weight: bold; font-family: 'Consolas'; }}
+            QListWidget {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); padding: 8px; color: #e0e0e0; outline: none; }}
+            QListWidget::item:selected {{ background-color: rgba(255, 255, 255, 0.1); color: {theme_color}; font-weight: bold; }}
+            QLineEdit, QComboBox {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px; padding: 8px; color: #fff; font-family: 'Consolas'; }}
+            QLineEdit:focus, QComboBox:focus {{ border: 1px solid {theme_color}; background-color: rgba(255, 255, 255, 0.1); }}
+            QPushButton {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid {theme_color}; border-radius: 2px; padding: 10px; color: {theme_color}; font-weight: bold; font-family: 'Consolas'; }}
             QPushButton:hover {{ background-color: {theme_color}; color: #000; }}
             QCheckBox {{ color: #e0e0e0; font-family: 'Consolas'; }}
-            QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid #3d3d5c; border-radius: 4px; background: #111; }}
-            QCheckBox::indicator:checked {{ background-color: {theme_color}; border: 1px solid {theme_color}; }}
+            QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid {theme_color}; background: transparent; }}
+            QCheckBox::indicator:checked {{ background-color: {theme_color}; }}
         """)
         
         layout = QVBoxLayout(self)
@@ -123,7 +114,7 @@ class DayManagerDialog(QDialog):
         layout.addWidget(self.list_widget)
         
         self.del_btn = QPushButton("🗑️ SEÇİLİ KAYDI SİL", self)
-        self.del_btn.setStyleSheet("QPushButton { border: 1px solid #ff4444; color: #ff4444; } QPushButton:hover { background-color: #ff4444; color: #fff; }")
+        self.del_btn.setStyleSheet("QPushButton { border: 1px solid #ff4444; color: #ff4444; background: transparent; } QPushButton:hover { background-color: #ff4444; color: #fff; }")
         self.del_btn.clicked.connect(self.delete_event)
         layout.addWidget(self.del_btn)
         
@@ -200,76 +191,95 @@ class DayManagerDialog(QDialog):
             
         self.parent_core.save_memory(); self.refresh_list(); self.desc_input.clear(); self.amount_input.clear()
 
+# --- ORİJİNAL JARVIS REAKTÖRÜ (YUMUŞAK ANİMASYON) ---
 class AnimatedOrbWidget(QWidget):
-    def __init__(self, parent=None, size=340):
+    def __init__(self, parent=None, size=400):
         super().__init__(parent)
         self.setFixedSize(size, size)
-        self._size = size; self._center = size / 2; self._state = "bekliyor"; self._tick = 0; self._ring_angles = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self._size = size
+        self._center = size / 2
+        self._state = "bekliyor"
+        self._tick = 0
+        self._angles = [0.0] * 8 
+        
         self.state_animations = {
-            "bekliyor": {"spin": 0.5, "pulse_speed": 0.05, "pulse_amp": 0.03}, 
-            "dinliyor": {"spin": 1.5, "pulse_speed": 0.15, "pulse_amp": 0.06}, 
-            "dusunuyor": {"spin": 2.5, "pulse_speed": 0.08, "pulse_amp": 0.02}, 
-            "konusuyor": {"spin": 2.0, "pulse_speed": 0.35, "pulse_amp": 0.15}, 
+            "bekliyor": {"spin_base": 0.5, "pulse_speed": 0.05, "pulse_amp": 0.03}, 
+            "dinliyor": {"spin_base": 1.5, "pulse_speed": 0.12, "pulse_amp": 0.05}, 
+            "dusunuyor": {"spin_base": 2.5, "pulse_speed": 0.08, "pulse_amp": 0.04}, 
+            "konusuyor": {"spin_base": 2.0, "pulse_speed": 0.20, "pulse_amp": 0.08}, 
         }
-        self.timer = QTimer(self); self.timer.timeout.connect(self.update_animation); self.timer.start(30) 
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_animation)
+        self.timer.start(30) 
 
-    def set_state(self, state: str): self._state = state if state in self.state_animations else "bekliyor"
+    def set_state(self, state: str): 
+        self._state = state if state in self.state_animations else "bekliyor"
 
     def update_animation(self):
         self._tick += 1
         style = self.state_animations.get(self._state, self.state_animations["bekliyor"])
-        speeds = [1.0, -1.3, 0.8, -1.6, 2.0]
-        for i in range(5): self._ring_angles[i] = (self._ring_angles[i] + style["spin"] * speeds[i]) % 360
+        speeds = [0.8, -1.2, 1.5, -0.9, 2.0, -2.5, 0.5, -0.7]
+        for i in range(8): 
+            self._angles[i] = (self._angles[i] + style["spin_base"] * speeds[i]) % 360
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
+        
         style = self.state_animations.get(self._state, self.state_animations["bekliyor"])
         pulse_speed = style["pulse_speed"]; pulse_amp = style["pulse_amp"]
+        
         parent_window = self.window()
-        hex_color = parent_window.current_theme_color if hasattr(parent_window, "current_theme_color") else "#00d0ff"
+        hex_color = parent_window.current_theme_color if hasattr(parent_window, "current_theme_color") else "#00ff00"
         base_color = QColor(hex_color)
-        cx = self._center; cy = self._center
+        
+        cx = self._center
+        cy = self._center
+        
+        # PÜRÜZSÜZ SES DALGASI
         pulse_factor = 1.0 + (math.sin(self._tick * pulse_speed) * pulse_amp)
+        if self._state == "konusuyor":
+            pulse_factor += (math.cos(self._tick * 0.08) * 0.03)
         
-        r1 = (self._size * 0.45) * pulse_factor
-        pen1 = QPen(base_color, 2); pen1.setDashPattern([15, 10, 5, 10])
-        painter.translate(cx, cy); painter.rotate(self._ring_angles[0]); painter.setPen(pen1)
-        painter.drawEllipse(int(-r1), int(-r1), int(r1*2), int(r1*2))
-        painter.rotate(-self._ring_angles[0]); painter.translate(-cx, -cy)
-        
-        r2 = (self._size * 0.40) * pulse_factor
-        pen2 = QPen(base_color, 4); c2 = QColor(base_color); c2.setAlpha(180); pen2.setColor(c2); pen2.setDashPattern([30, 20])
-        painter.translate(cx, cy); painter.rotate(self._ring_angles[1]); painter.setPen(pen2)
-        painter.drawEllipse(int(-r2), int(-r2), int(r2*2), int(r2*2))
-        painter.rotate(-self._ring_angles[1]); painter.translate(-cx, -cy)
+        def draw_hud_ring(radius, pen_width, alpha, dash_pattern=None, angle_idx=None, arcs=None):
+            r = radius * pulse_factor
+            pen = QPen(base_color, pen_width); c = QColor(base_color); c.setAlpha(alpha); pen.setColor(c)
+            if dash_pattern: pen.setDashPattern(dash_pattern)
+            painter.setPen(pen)
+            if angle_idx is not None:
+                painter.translate(cx, cy); painter.rotate(self._angles[angle_idx])
+                if arcs:
+                    for start, span in arcs: painter.drawArc(int(-r), int(-r), int(r*2), int(r*2), int(start * 16), int(span * 16))
+                else: painter.drawEllipse(int(-r), int(-r), int(r*2), int(r*2))
+                painter.rotate(-self._angles[angle_idx]); painter.translate(-cx, -cy)
+            else:
+                painter.drawEllipse(int(cx - r), int(cy - r), int(r*2), int(r*2))
 
-        r3 = (self._size * 0.35) * pulse_factor
-        pen3 = QPen(base_color, 1); c3 = QColor(base_color); c3.setAlpha(100); pen3.setColor(c3); painter.setPen(pen3)
-        painter.drawEllipse(int(cx - r3), int(cy - r3), int(r3*2), int(r3*2))
-
-        r4 = (self._size * 0.30) * pulse_factor
-        pen4 = QPen(base_color, 3); pen4.setDashPattern([5, 5, 15, 10])
-        painter.translate(cx, cy); painter.rotate(self._ring_angles[3]); painter.setPen(pen4)
-        painter.drawEllipse(int(-r4), int(-r4), int(r4*2), int(r4*2))
-        painter.rotate(-self._ring_angles[3]); painter.translate(-cx, -cy)
+        draw_hud_ring(radius=180, pen_width=1, alpha=80, dash_pattern=[2, 4], angle_idx=6)
+        draw_hud_ring(radius=160, pen_width=4, alpha=150, dash_pattern=[15, 10, 5, 10], angle_idx=0)
+        draw_hud_ring(radius=145, pen_width=2, alpha=100, angle_idx=1)
+        draw_hud_ring(radius=130, pen_width=8, alpha=200, angle_idx=2, arcs=[(0, 60), (120, 60), (240, 60)])
+        draw_hud_ring(radius=115, pen_width=3, alpha=180, angle_idx=3, arcs=[(45, 90), (225, 90)])
+        draw_hud_ring(radius=95, pen_width=5, alpha=150, dash_pattern=[5, 5, 20, 5], angle_idx=4)
         
-        r5 = (self._size * 0.15) * pulse_factor
-        pen5 = QPen(base_color, 3); c5 = QColor(base_color); c5.setAlpha(220); pen5.setColor(c5); painter.setPen(pen5)
-        painter.translate(cx, cy); painter.rotate(self._ring_angles[4])
-        painter.drawArc(int(-r5), int(-r5), int(r5*2), int(r5*2), 0 * 16, 120 * 16)
-        painter.drawArc(int(-r5), int(-r5), int(r5*2), int(r5*2), 180 * 16, 120 * 16)
-        painter.rotate(-self._ring_angles[4]); painter.translate(-cx, -cy)
-        
-        core_r = (self._size * 0.08) * pulse_factor
-        if self._state == "konusuyor": core_r += (math.sin(self._tick * 0.8) * 6)
-        painter.setPen(Qt.NoPen); core_color = QColor(base_color); core_color.setAlpha(int(150 + (60 * math.sin(self._tick * pulse_speed))))
-        painter.setBrush(QBrush(core_color)); painter.drawEllipse(int(cx - core_r), int(cy - core_r), int(core_r*2), int(core_r*2))
+        r_cross = 80 * pulse_factor
+        painter.setPen(QPen(QColor(base_color.red(), base_color.green(), base_color.blue(), 100), 1))
+        painter.drawLine(int(cx - r_cross), int(cy), int(cx + r_cross), int(cy))
+        painter.drawLine(int(cx), int(cy - r_cross), int(cx), int(cy + r_cross))
 
-        inner_core_r = core_r * 0.4
-        bright_color = QColor(base_color); bright_color.setAlpha(255)
-        painter.setBrush(QBrush(bright_color)); painter.drawEllipse(int(cx - inner_core_r), int(cy - inner_core_r), int(inner_core_r*2), int(inner_core_r*2))
+        core_r = (50) * pulse_factor
+        painter.setPen(Qt.NoPen); halo_color = QColor(base_color)
+        halo_alpha_base = 140 if self._state == "konusuyor" else 100
+        halo_color.setAlpha(int(halo_alpha_base + (40 * math.sin(self._tick * pulse_speed))))
+            
+        painter.setBrush(QBrush(halo_color))
+        painter.drawEllipse(int(cx - core_r - 10), int(cy - core_r - 10), int((core_r + 10)*2), int((core_r + 10)*2))
+        solid_color = QColor(base_color); solid_color.setAlpha(255); painter.setBrush(QBrush(solid_color))
+        painter.drawEllipse(int(cx - core_r), int(cy - core_r), int(core_r*2), int(core_r*2))
+        inner_core_r = core_r * 0.5
+        inner_color = QColor(255, 255, 255, 200); painter.setBrush(QBrush(inner_color))
+        painter.drawEllipse(int(cx - inner_core_r), int(cy - inner_core_r), int(inner_core_r*2), int(inner_core_r*2))
 
 class SysWorker(QThread):
     update_signal = pyqtSignal(float, float, float, float, str)
@@ -283,11 +293,9 @@ class SysWorker(QThread):
                 r = psutil.virtual_memory()
                 gpu_text = "GPU Usage: Kapalı"
                 self.update_signal.emit(c, r.percent, r.used / (1024**3), r.total / (1024**3), gpu_text)
-            except Exception:
-                pass
+            except: pass
             time.sleep(1) 
-    def stop(self):
-        self.is_running = False
+    def stop(self): self.is_running = False
 
 class WeatherWorker(QThread):
     weather_ready = pyqtSignal(str)
@@ -300,13 +308,11 @@ class WeatherWorker(QThread):
             geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(sehir)}&count=1&language=tr&format=json"
             geo_resp = requests.get(geo_url, timeout=5).json()
             if "results" in geo_resp and len(geo_resp["results"]) > 0:
-                lat = geo_resp["results"][0]["latitude"]
-                lon = geo_resp["results"][0]["longitude"]
+                lat = geo_resp["results"][0]["latitude"]; lon = geo_resp["results"][0]["longitude"]
                 weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
                 w_resp = requests.get(weather_url, timeout=5).json()
                 if "current_weather" in w_resp:
-                    temp = w_resp["current_weather"]["temperature"]
-                    code = w_resp["current_weather"]["weathercode"]
+                    temp = w_resp["current_weather"]["temperature"]; code = w_resp["current_weather"]["weathercode"]
                     durum = "Açık"
                     if code in [1, 2, 3]: durum = "Parçalı Bulutlu"
                     elif code in [45, 48]: durum = "Sisli"
@@ -314,12 +320,9 @@ class WeatherWorker(QThread):
                     elif code in [71, 73, 75, 77, 85, 86]: durum = "Karlı"
                     elif code in [95, 96, 99]: durum = "Fırtınalı"
                     self.weather_ready.emit(f"☁️ {temp}°C {durum}")
-                else:
-                    self.weather_ready.emit("☁️ Veri Alınamadı")
-            else:
-                self.weather_ready.emit("☁️ Şehir Bulunamadı")
-        except Exception as e: 
-            self.weather_ready.emit("☁️ Bağlantı Yok")
+                else: self.weather_ready.emit("☁️ Veri Alınamadı")
+            else: self.weather_ready.emit("☁️ Şehir Bulunamadı")
+        except: self.weather_ready.emit("☁️ Bağlantı Yok")
 
 class FinanceWorker(QThread):
     rates_ready = pyqtSignal(str, str, str)
@@ -331,24 +334,25 @@ class FinanceWorker(QThread):
         except: self.rates_ready.emit("Hata", "Hata", "Hata")
 
 class SettingsDialog(QDialog):
-    def __init__(self, parent=None, current_model="gemini-3.8-flash", current_speed="+15%", current_volume="100%", current_color="#32cd32", current_name="C.O.R.E.", current_loc="Konyaaltı,Antalya", current_salutation="efendim", current_api_key="", summary_prefs=None):
+    def __init__(self, parent=None, current_model="gemini-3.8-flash", current_speed="+15%", current_volume="100%", current_color="#00ff00", current_name="C.O.R.E.", current_loc="Istanbul,Turkiye", current_salutation="efendim", current_api_key="", summary_prefs=None):
         super().__init__(parent)
         self.setWindowTitle("KONTROL PANELİ")
         self.setFixedSize(480, 720) 
-        fixed_settings_color = "#00d0ff" 
         
+        c_primary = current_color if current_color else "#00ff00"
+            
         self.setStyleSheet(f"""
-            QDialog {{ background-color: #0f111a; }}
-            QLabel {{ color: {fixed_settings_color}; font-family: 'Consolas'; font-weight: bold; font-size: 12px; }}
-            QLineEdit, QComboBox {{ background-color: rgba(15, 20, 30, 0.8); border: 1px solid #3d3d5c; border-radius: 6px; padding: 7px; color: #fff; font-family: 'Consolas'; }}
-            QLineEdit:focus, QComboBox:focus {{ border: 1px solid {fixed_settings_color}; background-color: rgba(27, 27, 43, 0.9); }}
-            QGroupBox {{ border: 1px solid #3d3d5c; border-radius: 8px; margin-top: 15px; font-weight: bold; color: {fixed_settings_color}; }}
+            QDialog {{ background-color: #0f111a; border: 1px solid {c_primary}; }}
+            QLabel {{ color: {c_primary}; font-family: 'Consolas'; font-weight: bold; font-size: 12px; }}
+            QLineEdit, QComboBox {{ background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px; padding: 7px; color: #fff; font-family: 'Consolas'; }}
+            QLineEdit:focus, QComboBox:focus {{ border: 1px solid {c_primary}; background-color: rgba(255, 255, 255, 0.1); }}
+            QGroupBox {{ border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; margin-top: 15px; font-weight: bold; color: {c_primary}; }}
             QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}
             QCheckBox {{ color: #e0e0e0; font-family: 'Consolas'; margin-top: 4px; }}
-            QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid #3d3d5c; border-radius: 4px; background: #111; }}
-            QCheckBox::indicator:checked {{ background-color: {fixed_settings_color}; border: 1px solid {fixed_settings_color}; }}
-            QPushButton {{ background-color: #1b1b2b; border: 1px solid {fixed_settings_color}; border-radius: 6px; padding: 8px 15px; color: {fixed_settings_color}; font-weight: bold; font-family: 'Consolas'; }}
-            QPushButton:hover {{ background-color: {fixed_settings_color}; color: #000; }}
+            QCheckBox::indicator {{ width: 16px; height: 16px; border: 1px solid rgba(255, 255, 255, 0.4); background: transparent; }}
+            QCheckBox::indicator:checked {{ background-color: {c_primary}; border: 1px solid {c_primary}; }}
+            QPushButton {{ background-color: transparent; border: 1px solid {c_primary}; border-radius: 2px; padding: 8px 15px; color: {c_primary}; font-weight: bold; font-family: 'Consolas'; }}
+            QPushButton:hover {{ background-color: {c_primary}; color: #000; }}
         """)
         
         self.summary_prefs = summary_prefs if summary_prefs is not None else {"time": True, "weather": True, "tasks": True, "football": True, "currency": True}
@@ -362,10 +366,29 @@ class SettingsDialog(QDialog):
         self.loc_input = QLineEdit(self); self.loc_input.setText(current_loc)
 
         self.color_combo = QComboBox(self)
-        self.colors = {"Siber (Mavi)": "#00d0ff", "Kehribar (Sarı)": "#ffac00", "Matrix (Yeşil)": "#00ff00", "Kızıl (Kırmızı)": "#ff0000", "Beyaz": "#ffffff", "Neon Pembe": "#ff00ff", "Derin Mor": "#8a2be2", "Turuncu Rüyası": "#ff4500", "Buz Mavisi": "#add8e6", "Zehir Yeşili": "#32cd32", "Altın": "#ffd700", "Gümüş": "#c0c0c0", "Koyu Kan": "#8b0000", "Okyanus": "#008b8b", "Gece Mavisi": "#191970", "Sıcak Pembe": "#ff69b4", "Zümrüt": "#50c878", "Safir": "#0f52ba", "Ametist": "#9966cc", "Yakut": "#e0115f"}
+        self.colors = {
+            "Orijinal Yeşil": "#00ff00", "Zehir Yeşili": "#32cd32", "Orman Yeşili": "#228b22", "Açık Yeşil": "#90ee90",
+            "Siber Mavi": "#00d0ff", "Okyanus Mavisi": "#00a8ff", "Buz Mavisi": "#add8e6", "Gece Mavisi": "#191970",
+            "Güneş (Sarı)": "#ffff00", "Altın": "#ffd700", "Kehribar (Turuncu)": "#ffac00", "Ateş (Turuncu)": "#ff4500",
+            "Kızıl (Kırmızı)": "#ff0000", "Kan Kırmızı": "#8b0000",
+            "Neon Pembe": "#ff00ff", "Sıcak Pembe": "#ff69b4", "Derin Mor": "#8a2be2", "Ametist": "#9966cc",
+            "Beyaz": "#ffffff", "Gümüş": "#c0c0c0", "Özel Renk Seç (Palet)...": "custom"
+        }
         self.color_combo.addItems(self.colors.keys())
-        for text, hex_val in self.colors.items():
-            if hex_val == current_color: self.color_combo.setCurrentText(text)
+        self.custom_hex = current_color
+        
+        if current_color not in self.colors.values():
+            self.color_combo.setCurrentText("Özel Renk Seç (Palet)...")
+        else:
+            for text, hex_val in self.colors.items():
+                if hex_val == current_color: self.color_combo.setCurrentText(text)
+                
+        color_layout = QHBoxLayout()
+        color_layout.addWidget(self.color_combo)
+        self.btn_pick_color = QPushButton("🎨", self)
+        self.btn_pick_color.setFixedWidth(40)
+        self.btn_pick_color.clicked.connect(self.open_color_picker)
+        color_layout.addWidget(self.btn_pick_color)
 
         self.model_combo = QComboBox(self)
         self.model_combo.addItems(["gemini-3.6-flash", "gemini-3.8-flash", "gemini-1.5-flash"]); self.model_combo.setCurrentText(current_model)
@@ -374,7 +397,7 @@ class SettingsDialog(QDialog):
         self.volume_combo = QComboBox(self)
         self.volume_combo.addItems(["10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"]); self.volume_combo.setCurrentText(current_volume)
 
-        layout.addRow("Asistan Adı:", self.name_input); layout.addRow("Hitap Şekli:", self.salutation_input); layout.addRow("Google API Key:", self.api_key_input); layout.addRow("Tema Rengi:", self.color_combo); layout.addRow("Konum:", self.loc_input); layout.addRow("Yapay Zeka Modeli:", self.model_combo); layout.addRow("Ses Hızı:", self.speed_combo); layout.addRow("Ses Düzeyi:", self.volume_combo)
+        layout.addRow("Asistan Adı:", self.name_input); layout.addRow("Hitap Şekli:", self.salutation_input); layout.addRow("Google API Key:", self.api_key_input); layout.addRow("Tema Rengi:", color_layout); layout.addRow("Konum:", self.loc_input); layout.addRow("Yapay Zeka Modeli:", self.model_combo); layout.addRow("Ses Hızı:", self.speed_combo); layout.addRow("Ses Düzeyi:", self.volume_combo)
         
         self.summary_group = QGroupBox("GÜNAYDIN ÖZETİ")
         summary_layout = QVBoxLayout()
@@ -388,6 +411,12 @@ class SettingsDialog(QDialog):
         self.buttons.accepted.connect(self.accept); self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
 
+    def open_color_picker(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.custom_hex = color.name()
+            self.color_combo.setCurrentText("Özel Renk Seç (Palet)...")
+
     def get_summary_prefs(self): return {"time": self.chk_time.isChecked(), "weather": self.chk_weather.isChecked(), "tasks": self.chk_tasks.isChecked(), "football": self.chk_football.isChecked(), "currency": self.chk_currency.isChecked()}
 
 class ContinuousListenWorker(QThread):
@@ -398,7 +427,6 @@ class ContinuousListenWorker(QThread):
         r.energy_threshold = 300
         r.pause_threshold = 1.2
         r.dynamic_energy_threshold = True 
-        
         with sr.Microphone() as src:
             r.adjust_for_ambient_noise(src, duration=1.0)
             while self.is_running:
@@ -406,10 +434,8 @@ class ContinuousListenWorker(QThread):
                     audio = r.listen(src, timeout=3, phrase_time_limit=15)
                     text = r.recognize_google(audio, language="tr-TR")
                     if text: self.text_ready.emit(text)
-                except sr.WaitTimeoutError:
-                    continue
-                except Exception:
-                    time.sleep(0.1)
+                except sr.WaitTimeoutError: continue
+                except Exception: time.sleep(0.1)
     def stop(self): self.is_running = False
 
 class ChatWorker(QThread):
@@ -433,122 +459,226 @@ class ChatWorker(QThread):
             clean_text = self.raw_user_text.lower()
             clean_text_tr = turkce_karakter_temizle(clean_text)
 
-            if "whatsapp" in clean_text:
-                if "yaz" in clean_text or "mesaj" in clean_text:
+            # --- ÇOKLU PLATFORM AÇICI (YouTube, TOD, HBO Max vb.) ---
+            if any(w in clean_text_tr for w in ["aç", "ac", "başlat", "baslat", "gir", "izle"]):
+                acilanlar = []
+                
+                if any(w in clean_text_tr for w in ["youtube music", "youtube müzik", "yt music"]):
+                    run_async("start https://music.youtube.com")
+                    acilanlar.append("YouTube Music")
+                    clean_text_tr = clean_text_tr.replace("youtube music", "").replace("youtube müzik", "")
+                
+                if "youtube" in clean_text_tr:
+                    run_async("start https://www.youtube.com")
+                    acilanlar.append("YouTube")
+                    
+                if any(w in clean_text_tr for w in ["tod", "bein sport", "beinsport", "bein sports", "lig tv"]):
+                    run_async("start https://www.todtv.com.tr/canli-tv/bein-sports-1?c=spor")
+                    acilanlar.append("TOD (beIN Sports)")
+                    
+                if any(w in clean_text_tr for w in ["hbo", "max", "hbo max"]):
+                    run_async("start https://www.max.com")
+                    acilanlar.append("HBO Max")
+                    
+                if any(w in clean_text_tr for w in ["yeni sekme", "sekme aç", "sekme ac"]):
+                    run_async("start https://www.google.com")
+                    acilanlar.append("Yeni Sekme")
+
+                if acilanlar:
+                    c = f"İstediğiniz {', '.join(acilanlar)} platformları anında başlatılıyor {self.salutation}."
+                    self.response_ready.emit(c)
+                    self.state_changed.emit("konusuyor")
+                    self.speak_text(c)
+                    self.state_changed.emit("bekliyor")
+                    return
+            # --------------------------------------------------------
+
+            # --- SUSTURMA KOMUTU ---
+            if clean_text_tr in ["sus", "yeter", "sesi kes", "konuşmayı durdur", "tamamdır", "teşekkürler"]:
+                pygame.mixer.music.stop()
+                self.response_ready.emit("Susturuldu.")
+                self.state_changed.emit("bekliyor")
+                return
+
+            # --- SİSTEMİ KAPATMA / VEDA PROTOKOLÜ ---
+            if any(w in clean_text_tr for w in ["kendini kapat", "kapan", "sistemi kapat", "dışarı çıkıyorum", "disari cikiyorum"]):
+                mesajlar = [
+                    f"Görüşmek üzere {self.salutation}, iyi eğlenceler dilerim.",
+                    f"Sistemleri kapatıyorum. Görüşürüz {self.salutation}, iyi seyirler.",
+                    f"Harika bir gün geçirmenizi dilerim {self.salutation}. Çıkış yapılıyor."
+                ]
+                c = random.choice(mesajlar)
+                self.response_ready.emit(c)
+                self.state_changed.emit("konusuyor")
+                self.speak_text(c)
+                time.sleep(0.5) 
+                self.close_app_signal.emit()
+                return
+
+            # --- KUSURSUZ WHATSAPP (TÜRKÇE KARAKTER KORUMASI EKLENDİ) ---
+            if "whatsapp" in clean_text_tr:
+                if any(w in clean_text_tr for w in ["yaz", "mesaj", "gönder", "gonder"]):
                     try:
+                        import webbrowser
                         kisi_bulundu = None
                         mesaj_icerik = "Sistem üzerinden iletildi."
-                        for isim in whatsapp.REHBER.keys():
-                            if isim in clean_text:
+                        
+                        try:
+                            aktif_rehber = whatsapp.REHBER
+                        except Exception:
+                            # AÇIK KAYNAK İÇİN ANONİMLEŞTİRİLMİŞ ÖRNEK REHBER
+                            aktif_rehber = {
+                                "kisi1": "+905550000001",
+                                "kisi2": "+905550000002",
+                                "grup_adi": "GRUP"
+                            }
+
+                        for isim in aktif_rehber.keys():
+                            if isim in clean_text_tr:
                                 kisi_bulundu = isim
-                                idx = clean_text.find(isim) + len(isim)
-                                kalan = clean_text[idx:].strip()
-                                kelimeler = kalan.split()
-                                if kelimeler and len(kelimeler[0]) <= 3:
-                                    kelimeler = kelimeler[1:]
-                                if kelimeler and kelimeler[-1] in ["yaz", "gönder", "gonder"]:
-                                    kelimeler = kelimeler[:-1]
-                                if kelimeler:
-                                    mesaj_icerik = " ".join(kelimeler).capitalize()
+                                ham_mesaj = self.raw_user_text.lower()
+                                
+                                silinecekler = ["whatsapp'ı", "whatsapp'i", "whatsappı", "whatsappi", "whatsapp'tan", "whatsapptan", "whatsapp", "aç", "ac"]
+                                for s in silinecekler:
+                                    ham_mesaj = ham_mesaj.replace(s, "")
+                                ham_mesaj = ham_mesaj.strip()
+                                
+                                idx = ham_mesaj.find(isim)
+                                if idx != -1:
+                                    kalan = ham_mesaj[idx + len(isim):].strip()
+                                else:
+                                    kalan = ham_mesaj
+                                
+                                for ek in ["'a ", "'e ", "a ", "e ", "ya ", "ye ", "na ", "ne ", "dan ", "den ", "tan ", "ten ", "grubuna ", "gruba "]:
+                                    if kalan.startswith(ek):
+                                        kalan = kalan[len(ek):].strip()
+                                        break
+                                
+                                for bitis in [" yaz", " gönder", " gonder", " mesaj at", " yolla", " yollarmısın", " yollar mısın"]:
+                                    if kalan.endswith(bitis):
+                                        kalan = kalan[:-len(bitis)].strip()
+                                        break
+                                
+                                if kalan:
+                                    mesaj_icerik = kalan.capitalize()
                                 break
+                        
                         if kisi_bulundu:
-                            whatsapp.send_whatsapp_message(kisi_bulundu, mesaj_icerik) 
-                            c = f"WhatsApp üzerinden {kisi_bulundu} kişisine '{mesaj_icerik}' mesajı iletildi {self.salutation}."
+                            telefon = aktif_rehber[kisi_bulundu].replace(" ", "")
+                            
+                            def whatsapp_web_fallback(hedef_url):
+                                import webbrowser, time
+                                try: import pyautogui
+                                except ImportError: pyautogui = None
+                                webbrowser.open(hedef_url)
+                                if pyautogui:
+                                    time.sleep(15) 
+                                    pyautogui.press('enter') 
+                                    time.sleep(2)
+                                    pyautogui.hotkey('ctrl', 'w') 
+
+                            try:
+                                threading.Thread(target=whatsapp.send_whatsapp_message, args=(kisi_bulundu, mesaj_icerik), daemon=True).start()
+                            except Exception:
+                                if telefon == "GRUP":
+                                    threading.Thread(target=lambda: webbrowser.open("https://web.whatsapp.com/"), daemon=True).start()
+                                else:
+                                    url = f"https://web.whatsapp.com/send?phone={telefon}&text={urllib.parse.quote(mesaj_icerik)}"
+                                    threading.Thread(target=whatsapp_web_fallback, args=(url,), daemon=True).start()
+                            
+                            c = f"Hemen {kisi_bulundu} kişisine '{mesaj_icerik}' mesajını iletiyorum {self.salutation}."
                         else:
-                            os.system("start https://web.whatsapp.com/")
-                            c = f"Rehberde kişi bulunamadığı için sadece WhatsApp Web açıldı {self.salutation}."
+                            threading.Thread(target=lambda: webbrowser.open("https://web.whatsapp.com/"), daemon=True).start()
+                            c = f"Rehberde eşleşen kişi bulunamadı, WhatsApp Web açıldı {self.salutation}."
                     except Exception as e:
-                        os.system("start https://web.whatsapp.com/")
+                        import webbrowser
+                        threading.Thread(target=lambda: webbrowser.open("https://web.whatsapp.com/"), daemon=True).start()
                         c = f"WhatsApp Web açıldı {self.salutation}."
                 else:
-                    os.system("start https://web.whatsapp.com/")
+                    import webbrowser
+                    threading.Thread(target=lambda: webbrowser.open("https://web.whatsapp.com/"), daemon=True).start()
                     c = f"WhatsApp başlatıldı {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
-
-            if any(w in clean_text for w in ["yeni sekme", "sekme aç"]):
-                try: browser_control.open_new_tab("https://www.google.com")
-                except: pass
-                c = f"Yeni sekme açıldı {self.salutation}."
-                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
-
-            if any(w in clean_text for w in ["masaüstünü göster", "pencereleri küçült", "pencereyi küçült"]):
-                try: desktop.show_desktop()
-                except: os.system("win+d")
+            # -----------------------------------------------------------------
+            
+            # --- MASAÜSTÜNÜ GÖSTER VE KÜÇÜLT (Doğrudan Windows API) ---
+            if any(w in clean_text_tr for w in ["masaüstünü göster", "masaustunu goster", "pencereleri küçült", "pencereleri kucult", "pencereyi küçült"]):
+                ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0) # Win
+                ctypes.windll.user32.keybd_event(0x44, 0, 0, 0) # D
+                ctypes.windll.user32.keybd_event(0x44, 0, 2, 0)
+                ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)
                 c = f"Masaüstü gösteriliyor {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
-            if any(w in clean_text for w in ["sesi ayarla", "ses seviyesi", "sesi artır", "sesi aç"]):
-                try: system_ops.volume_up()
-                except: pass
+            # --- SES KONTROLÜ (Doğrudan Windows Medya API) ---
+            if any(w in clean_text_tr for w in ["sesi artır", "sesi artir", "sesi aç", "sesi ac", "ses seviyesi"]):
+                for _ in range(5): 
+                    ctypes.windll.user32.keybd_event(0xAF, 0, 0, 0); ctypes.windll.user32.keybd_event(0xAF, 0, 2, 0)
                 c = f"Ses seviyesi artırıldı {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
-            if any(w in clean_text for w in ["sesi kıs", "sesi kapat", "sessize al"]):
-                try: system_ops.mute_volume()
-                except: pass
-                c = f"Sistem sesi ayarlandı {self.salutation}."
+            if any(w in clean_text_tr for w in ["sesi kıs", "sesi kis", "sesi azalt"]):
+                for _ in range(5): 
+                    ctypes.windll.user32.keybd_event(0xAE, 0, 0, 0); ctypes.windll.user32.keybd_event(0xAE, 0, 2, 0)
+                c = f"Ses seviyesi düşürüldü {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
+            if any(w in clean_text_tr for w in ["sesi kapat", "sessize al"]):
+                ctypes.windll.user32.keybd_event(0xAD, 0, 0, 0); ctypes.windll.user32.keybd_event(0xAD, 0, 2, 0)
+                c = f"Sistem sesi kapatıldı {self.salutation}."
+                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
+
+            # --- MANUEL GOOGLE ARAMA TETİKLEYİCİSİ ---
+            if "internette ara" in clean_text_tr or ("google" in clean_text_tr and "ara" in clean_text_tr) or "google'dan bul" in clean_text_tr:
+                search_query = clean_text_tr.replace("internette", "").replace("google'da", "").replace("google da", "").replace("ara", "").replace("bul", "").strip()
+                if search_query:
+                    run_async(f"start https://www.google.com/search?q={urllib.parse.quote(search_query)}")
+                    c = f"'{search_query}' için anında Google araması başlatıyorum {self.salutation}."
+                    self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
+
             if any(w in clean_text for w in ["word dosyası", "word aç", "word belgesi"]):
-                os.system("start winword")
+                run_async("start winword")
                 c = f"Microsoft Word başlatılıyor {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
             if any(w in clean_text for w in ["excel dosyası", "excel aç", "tablo aç"]):
-                os.system("start excel")
+                run_async("start excel")
                 c = f"Microsoft Excel başlatılıyor {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
-            # --- EVRENSEL DOSYA YOLLARI (OPEN-SOURCE) ---
             dosya_tetikleyiciler = ["okul", "belge", "indir", "bilgisayar", "dosya", "klasor", "klaosr", "proje", "gezgin"]
             if any(w in clean_text_tr for w in dosya_tetikleyiciler):
                 klasor_acildi = False
                 user_profile = os.environ.get('USERPROFILE', 'C:\\')
-                
                 if "okul" in clean_text_tr:
-                    os.system(f'start explorer "{user_profile}\\Desktop"')
+                    run_async(f'start explorer "{user_profile}\\Desktop"')
                     c = f"Masaüstü açılıyor {self.salutation}."
                     klasor_acildi = True
                 elif "belge" in clean_text_tr:
-                    os.system(f'start explorer "{user_profile}\\Documents"')
+                    run_async(f'start explorer "{user_profile}\\Documents"')
                     c = f"Belgeler klasörünüz açılıyor {self.salutation}."
                     klasor_acildi = True
                 elif "indir" in clean_text_tr:
-                    os.system(f'start explorer "{user_profile}\\Downloads"')
+                    run_async(f'start explorer "{user_profile}\\Downloads"')
                     c = f"İndirilenler klasörünüz açılıyor {self.salutation}."
                     klasor_acildi = True
                 elif "proje" in clean_text_tr or "core" in clean_text_tr:
                     current_dir = os.getcwd()
-                    os.system(f'start explorer "{current_dir}"')
+                    run_async(f'start explorer "{current_dir}"')
                     c = f"Proje klasörünüz açılıyor {self.salutation}."
                     klasor_acildi = True
                 elif any(w in clean_text_tr for w in ["bilgisayar", "dosya", "klasor", "klaosr", "gezgin"]):
-                    os.system("start explorer")
+                    run_async("start explorer")
                     c = f"Dosya gezgini açılıyor {self.salutation}."
                     klasor_acildi = True
                 if klasor_acildi:
                     self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
-
-            if "word" in clean_text_tr and "ac" in clean_text_tr:
-                os.system("start winword")
-                c = "Microsoft Word başlatılıyor efendim."
-                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
             
-            elif "hesap makine" in clean_text_tr and "ac" in clean_text_tr:
-                os.system("start calc")
+            if "hesap makine" in clean_text_tr and "ac" in clean_text_tr:
+                run_async("start calc")
                 c = "Hesap makinesi açılıyor efendim."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
-                
-            elif "youtube" in clean_text_tr and "ac" in clean_text_tr:
-                os.system("start https://www.youtube.com")
-                c = "YouTube açılıyor efendim."
-                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
-
-            if "kendini kapat" in clean_text_tr or "sistemi kapat" in clean_text_tr:
-                self.action_triggered.emit("close_app", "")
-                c = "Sistem kapatılıyor. İyi günler efendim."
-                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); return
 
             if any(w in clean_text for w in ["hava nasıl", "hava durumu", "bugün hava"]):
                 try: 
@@ -662,22 +792,21 @@ class ChatWorker(QThread):
             if any(w in clean_text_tr for w in ["ucak bileti", "uçak bileti", "ucus bak", "uçuş bak", "bilet bak"]):
                 c = f"Sizin için en uygun fiyatlı uçak bileti karşılaştırma sitelerini ve firmaları açıyorum {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c)
-                os.system("start https://www.skyscanner.com.tr/"); time.sleep(0.3)
-                os.system("start https://www.enuygun.com/ucak-bileti/"); time.sleep(0.3)
-                os.system("start https://www.flypgs.com/"); time.sleep(0.3)
-                os.system("start https://www.turkishairlines.com/")
+                run_async("start https://www.skyscanner.com.tr/")
+                run_async("start https://www.enuygun.com/ucak-bileti/")
+                run_async("start https://www.flypgs.com/")
+                run_async("start https://www.turkishairlines.com/")
                 self.state_changed.emit("bekliyor"); return
 
             if any(w in clean_text_tr for w in ["otobus bileti", "otobüs bileti", "otobus bak", "otobüs bak"]):
                 c = f"Sizin için popüler otobüs bilet ve karşılaştırma sayfalarını açıyorum {self.salutation}."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c)
-                os.system("start https://www.obilet.com/"); time.sleep(0.3)
-                os.system("start https://www.enuygun.com/otobus-bileti/"); time.sleep(0.3)
-                os.system("start https://www.kamilkoc.com.tr/"); time.sleep(0.3)
+                run_async("start https://www.obilet.com/")
+                run_async("start https://www.enuygun.com/otobus-bileti/")
+                run_async("start https://www.kamilkoc.com.tr/")
                 self.state_changed.emit("bekliyor"); return
 
             spor_tetikleyiciler = ["mac", "maç", "fikst", "puan", "tablo", "lig", "ucl", "uel", "sampiyonlar", "fener", "fb", "galatasaray", "gs", "besiktas", "bjk", "trabzon", "ts", "skor", "hafta"]
-
             if any(w in clean_text_tr for w in spor_tetikleyiciler) and not ("ozet" in clean_text_tr or "özet" in clean_text_tr):
                 urls_to_open = []; hedefler = []
                 if any(w in clean_text_tr for w in ["galatasaray", "gs"]): urls_to_open.append("https://ofsayt.com/futbol/takim/galatasaray/63345ed9-00e4-4874-af53-2afe719458a0/detay"); hedefler.append("Galatasaray")
@@ -695,9 +824,7 @@ class ChatWorker(QThread):
                 if urls_to_open:
                     c = f"İstediğiniz {', '.join(hedefler)} maç, fikstür ve tablo verilerini anında açıyorum {self.salutation}."
                     self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c)
-                    for u in urls_to_open:
-                        os.system(f"start {u}")
-                        time.sleep(0.3)
+                    for u in urls_to_open: run_async(f"start {u}")
                     self.state_changed.emit("bekliyor"); return
 
             if "ozet" in clean_text_tr or "özet" in clean_text_tr:
@@ -712,9 +839,7 @@ class ChatWorker(QThread):
                 if urls_to_open:
                     c = f"Hemen {', '.join(hedefler)} maç özetlerini açıyorum {self.salutation}."
                     self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c)
-                    for u in urls_to_open:
-                        os.system(f"start {u}")
-                        time.sleep(0.3)
+                    for u in urls_to_open: run_async(f"start {u}")
                     self.state_changed.emit("bekliyor"); return
 
             if "haftalik" in clean_text_tr and "sifirla" in clean_text_tr:
@@ -730,7 +855,7 @@ class ChatWorker(QThread):
                     cevap = f"Abonelikler eklendi {self.salutation}."
                     self.response_ready.emit(cevap); self.state_changed.emit("konusuyor"); self.speak_text(cevap); self.state_changed.emit("bekliyor"); return
 
-            if any(p in clean_text_tr for p in ["gorev ekle", "yapilacak ekle", "hatırlatma ekle", "hatirlatma ekle"]):
+            if any(p in clean_text_tr for p in ["gore ekle", "yapilacak ekle", "hatırlatma ekle", "hatirlatma ekle"]):
                 cl = self.raw_user_text.split(":", 1)[1].strip() if ":" in self.raw_user_text else self.raw_user_text.replace("görev ekle", "").replace("hatırlatma ekle", "").strip()
                 if cl: 
                     self.task_added.emit("reminder", cl)
@@ -741,10 +866,6 @@ class ChatWorker(QThread):
                 self.task_added.emit("clear_tasks", ""); c = f"Görevler silindi."
                 self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.state_changed.emit("bekliyor"); return
 
-            if "kendini kapat" in clean_text_tr or "kapan" in clean_text_tr:
-                c = f"Çıkış yapıyorum {self.salutation}."
-                self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); self.close_app_signal.emit(); return
-
             self.state_changed.emit("dusunuyor")
             content_to_send = [self.gemini_prompt]
             if self.image_path and os.path.exists(self.image_path): content_to_send.append(PIL.Image.open(self.image_path))
@@ -754,12 +875,19 @@ class ChatWorker(QThread):
                 self.response_ready.emit(">> [API HATASI]")
                 self.state_changed.emit("bekliyor"); return
 
+            sys_inst = f"Senin adın {self.ai_name}. Asla markdown kullanma. Sahibine '{self.salutation}' diye hitap et. Bilmediğin veya güncel bir konu sorulursa internette arama yaparak cevap ver."
+
             success = False
             for k in api_keys:
                 try:
                     genai.configure(api_key=k)
-                    model = genai.GenerativeModel(self.model_name, system_instruction=f"Senin adın {self.ai_name}. Asla markdown kullanma. Sahibine '{self.salutation}' diye hitap et.")
-                    c = model.generate_content(content_to_send).text.strip().replace("**", "").replace("*", "")
+                    try:
+                        model = genai.GenerativeModel(self.model_name, tools='google_search_retrieval', system_instruction=sys_inst)
+                        c = model.generate_content(content_to_send).text.strip().replace("**", "").replace("*", "")
+                    except Exception:
+                        model = genai.GenerativeModel(self.model_name, system_instruction=sys_inst)
+                        c = model.generate_content(content_to_send).text.strip().replace("**", "").replace("*", "")
+                    
                     self.response_ready.emit(c); self.state_changed.emit("konusuyor"); self.speak_text(c); success = True; break 
                 except Exception: 
                     continue 
@@ -787,34 +915,34 @@ class ChatWorker(QThread):
             async def gen(): 
                 await edge_tts.Communicate(cl, "tr-TR-AhmetNeural", rate=self.voice_speed).save(af)
             
-            try:
-                asyncio.run(gen())
-            except Exception:
-                return
+            try: asyncio.run(gen())
+            except: return
 
             if os.path.exists(af):
                 pygame.mixer.music.load(af)
                 pygame.mixer.music.set_volume(self.vol_float)
                 pygame.mixer.music.play()
-                
-                while pygame.mixer.music.get_busy(): 
-                    time.sleep(0.05)
-                    
+                while pygame.mixer.music.get_busy(): time.sleep(0.05)
                 pygame.mixer.music.unload()
                 time.sleep(0.1)
-                
                 try: os.remove(af)
                 except: pass
-        except Exception: 
-            pass
+        except: pass
 
 class CoreInterface(QMainWindow):
     def __init__(self):
         super().__init__()
+        
+        self.memory_file = "core_memory.json"
+        self.load_memory() 
+        
+        c_primary = getattr(self, "current_theme_color", "#00ff00")
+        self.setStyleSheet(f"QMainWindow {{ background-color: #12121c; color: #f5f5f7; border: 1px solid {c_primary}; }}")
+        
         font_yolu = resource_path("orbitron.ttf")
         if os.path.exists(font_yolu):
             QFontDatabase.addApplicationFont(font_yolu)
-        try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MuratBarisGuler.CORE.v51")
+        try: ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MyCoreAssistant.CORE.v51")
         except: pass
             
         icon_yolu = resource_path("icon.ico")
@@ -829,17 +957,14 @@ class CoreInterface(QMainWindow):
                     except: pass
         except: pass
 
-        self.is_listening_active = True; self.memory_file = "core_memory.json"
+        self.is_listening_active = True
         self.pomodoro_time = 0; self.pomo_timer = QTimer(self); self.pomo_timer.timeout.connect(self.update_pomodoro)
-        self.load_memory()
         
         self.clip = QApplication.clipboard()
         self.clip.dataChanged.connect(self.on_clipboard_change)
         self.latest_clip = ""; self.last_clip_time = 0
         
         self.setWindowTitle(f"{self.ai_name} — Centralized Operational Response Engine")
-        
-        # Tam Ekran ayarı
         self.setMinimumSize(1400, 850)
         self.showMaximized()
         
@@ -925,7 +1050,7 @@ class CoreInterface(QMainWindow):
                 except: pass
             if os.path.exists(ip): b.setIcon(QIcon(ip)); b.setIconSize(QSize(20, 20))
             else: b.setText(f"{e} {n}")
-            b.clicked.connect(lambda checked, url=u: os.system(f"start {url}"))
+            b.clicked.connect(lambda checked, url=u: run_async(f"start {url}"))
             qa_layout.addWidget(b, row, col); self.qa_buttons_list.append(b)
             col += 1
             if col > 3: col = 0; row += 1
@@ -933,7 +1058,7 @@ class CoreInterface(QMainWindow):
         left_layout.addWidget(self.qa_frame); left_layout.addSpacing(4)
         self.calendar_title = QLabel("TAKVİM", self); left_layout.addWidget(self.calendar_title)
         self.calendar = QCalendarWidget(self); self.calendar.clicked.connect(self.handle_calendar_click); left_layout.addWidget(self.calendar)
-        self.signature_label = QLabel("Geliştiren: Murat Barış Güler", self); self.signature_label.setAlignment(Qt.AlignCenter); left_layout.addWidget(self.signature_label)
+        self.signature_label = QLabel("Geliştiren: [Adınız Soyadınız]", self); self.signature_label.setAlignment(Qt.AlignCenter); left_layout.addWidget(self.signature_label)
         
         main_layout.addLayout(left_layout, stretch=1)
         
@@ -969,9 +1094,7 @@ class CoreInterface(QMainWindow):
         else: self.yt_icon_lbl.setText("🎵")
         self.yt_icon_lbl.setCursor(Qt.PointingHandCursor)
         
-        # --- AÇIK KAYNAK İÇİN GENEL YOUTUBE MUSIC LİNKİ ---
-        # Kullanıcılar kendi çalma listelerini buraya ekleyebilirler.
-        self.yt_icon_lbl.mousePressEvent = lambda event: os.system("start https://music.youtube.com/")
+        self.yt_icon_lbl.mousePressEvent = lambda event: run_async("start https://music.youtube.com/playlist?list=PLGuea1yszEwjIJgc6PL_b-Spy-4jCODSh")
             
         self.btn_prev = QPushButton("⏮", self); self.btn_play = QPushButton("⏯", self); self.btn_next = QPushButton("⏭", self)
         media_lay.addWidget(self.yt_icon_lbl)
@@ -1040,11 +1163,11 @@ class CoreInterface(QMainWindow):
 
     def start_pomodoro(self, minutes=40):
         self.pomodoro_time = int(minutes) * 60
-        self.lbl_pomodoro.setStyleSheet(f"font-family: 'Consolas'; font-size: 24px; font-weight: bold; color: {self.current_theme_color};")
+        self.lbl_pomodoro.setStyleSheet(f"font-family: 'Consolas'; font-size: 24px; font-weight: bold; color: {self.current_theme_color.split(',')[0]};")
         self.btn_pomo_start.hide()
         self.btn_pomo_stop.show()
         self.pomo_timer.start(1000)
-        os.system("start https://www.youtube.com/live/sF80I-TQiW0?si=bpJvHBdhLIqSmiUz")
+        run_async("start https://www.youtube.com/live/sF80I-TQiW0?si=bpJvHBdhLIqSmiUz")
 
     def stop_pomodoro(self): 
         self.pomo_timer.stop()
@@ -1118,7 +1241,7 @@ class CoreInterface(QMainWindow):
     def handle_calendar_click(self, qdate):
         d_str = qdate.toString("dd.MM.yyyy")
         d_day = str(qdate.day())
-        dlg = DayManagerDialog(self, d_str, d_day, self.current_theme_color)
+        dlg = DayManagerDialog(self, d_str, d_day, self.current_theme_color.split(',')[0])
         dlg.exec_()
         self.append_to_log(f">> [TAKVİM]: {d_str} güncellendi.")
         
@@ -1127,8 +1250,14 @@ class CoreInterface(QMainWindow):
             try:
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.ai_name = data.get("ai_name", "C.O.R.E."); self.current_theme_color = data.get("theme_color", "#00d0ff")
-                    self.current_location = data.get("location", "Konyaaltı,Antalya"); self.current_model = data.get("model", "gemini-3.8-flash")
+                    self.ai_name = data.get("ai_name", "C.O.R.E.")
+                    
+                    raw_color = data.get("theme_color", "#00ff00")
+                    if "," in raw_color: self.current_theme_color = raw_color.split(",")[0]
+                    else: self.current_theme_color = raw_color
+                        
+                    self.current_location = data.get("location", "Istanbul,Turkiye")
+                    self.current_model = data.get("model", "gemini-3.8-flash")
                     self.voice_speed = data.get("speed", "+15%"); self.voice_volume = data.get("volume", "100%")
                     self.current_salutation = data.get("salutation", "efendim"); self.custom_api_key = data.get("api_key", "")
                     self.saved_tasks = data.get("tasks", "- Python kodlarını düzenle")
@@ -1145,7 +1274,7 @@ class CoreInterface(QMainWindow):
         else: self.set_default_memory()
 
     def set_default_memory(self):
-        self.ai_name = "C.O.R.E."; self.current_theme_color = "#00d0ff"; self.current_location = "Konyaaltı,Antalya"
+        self.ai_name = "C.O.R.E."; self.current_theme_color = "#00ff00"; self.current_location = "Istanbul,Turkiye"
         self.current_model = "gemini-3.8-flash"; self.voice_speed = "+15%"; self.voice_volume = "100%"; self.current_salutation = "efendim"
         self.custom_api_key = ""; self.saved_tasks = "- Python kodlarını düzenle"
         self.saved_notes = ""; self.saved_chat_history = ""
@@ -1173,7 +1302,8 @@ class CoreInterface(QMainWindow):
         self.save_memory(); event.accept()
 
     def apply_styles(self):
-        c = self.current_theme_color; bg = "#12121c"; p_bg = "#1b1b2b"; bc = "#3d3d5c"; tc = "#f5f5f7"; mt = "#9a9ab0"
+        c = self.current_theme_color.split(",")[0]
+        bg = "#12121c"; p_bg = "#1b1b2b"; bc = "#3d3d5c"; tc = "#f5f5f7"; mt = "#9a9ab0"
         self.setStyleSheet(f"QMainWindow {{ background-color: {bg}; color: {tc}; }}")
         
         ts = f"font-family: 'Orbitron', 'Consolas'; font-weight: bold; font-size: 13px; border: 1px solid {c}; border-radius: 8px; padding: 5px; margin-bottom: 5px; margin-top: 5px; color: {c}; background-color: rgba(27, 27, 43, 0.7);"
@@ -1232,11 +1362,24 @@ class CoreInterface(QMainWindow):
         for btn in [self.btn_s_add, self.btn_s_edit, self.btn_c_add, self.btn_c_edit, self.btn_w_add, self.btn_w_edit, self.btn_dd_add, self.btn_dd_edit, self.btn_wd_add, self.btn_wd_edit]: btn.setStyleSheet(sbs)
         if hasattr(self, 'qa_buttons_list'):
             for btn in self.qa_buttons_list: btn.setStyleSheet(f"background-color: #2b2b3b; border: 1px solid {bc}; border-radius: 4px; color: #ffffff; font-family: 'Consolas'; font-weight: bold; font-size: 11px; padding: 5px;")
+            
+        if hasattr(self, 'orb') and hasattr(self.orb, 'set_state'):
+            self.orb.update()
 
     def open_settings(self):
         d = SettingsDialog(self, self.current_model, self.voice_speed, self.voice_volume, self.current_theme_color, self.ai_name, self.current_location, self.current_salutation, self.custom_api_key, self.summary_prefs)
         if d.exec_():
-            self.ai_name, self.current_salutation, self.custom_api_key, self.current_theme_color, self.summary_prefs = d.name_input.text().strip(), d.salutation_input.text().strip(), d.api_key_input.text().strip(), d.colors[d.color_combo.currentText()], d.get_summary_prefs()
+            self.ai_name = d.name_input.text().strip()
+            self.current_salutation = d.salutation_input.text().strip()
+            self.custom_api_key = d.api_key_input.text().strip()
+            
+            selected_text = d.color_combo.currentText()
+            if selected_text == "Özel Renk Seç (Palet)...":
+                self.current_theme_color = d.custom_hex
+            else:
+                self.current_theme_color = d.colors[selected_text]
+                
+            self.summary_prefs = d.get_summary_prefs()
             if d.loc_input.text().strip() != self.current_location: 
                 self.current_location = d.loc_input.text().strip(); self.loc_label.setText(f"📍 {self.current_location}"); self.fetch_weather() 
             self.current_model, self.voice_speed, self.voice_volume = d.model_combo.currentText(), d.speed_combo.currentText(), d.volume_combo.currentText()
@@ -1272,9 +1415,16 @@ class CoreInterface(QMainWindow):
     def send_message(self):
         u_txt = self.chat_input.text().strip()
         if u_txt:
-            self.append_to_log(f">> Kullanıcı: {u_txt}"); self.chat_input.clear(); self.orb.set_state("dusunuyor")
-            if "günaydın" in u_txt.lower(): 
-                self.trigger_morning_summary(); return
+            self.append_to_log(f">> Kullanıcı: {u_txt}")
+            self.chat_input.clear()
+            self.orb.set_state("dusunuyor")
+            
+            # --- GÜNAYDIN ÇAKIŞMASI BURADAN ÇÖZÜLDÜ ---
+            # Sadece tek başına "günaydın" veya "günaydın core" yazılırsa özeti açar
+            if u_txt.lower() in ["günaydın", "gunaydin", "günaydın c.o.r.e.", "günaydın core"]: 
+                self.trigger_morning_summary()
+                return
+            # ------------------------------------------
                 
             g_txt = u_txt
             if any(w in u_txt.lower() for w in ["ne zaman", "abonelik", "takvim", "ödeme", "maç", "mac", "kimle", "kaçta"]):
@@ -1318,8 +1468,9 @@ class CoreInterface(QMainWindow):
             self.add_obsidian_note("Gün sonlandırıldı, hedefler %80 tamamlandı. Sistem uyku moduna geçti.")
             os.system("shutdown /s /t 60")
         elif action_type == "game_mode":
-            os.system("taskkill /F /IM msedge.exe /T >nul 2>&1"); os.system("taskkill /F /IM chrome.exe /T >nul 2>&1")
-            os.system("start steam://open/games")
+            run_async("taskkill /F /IM msedge.exe /T >nul 2>&1")
+            run_async("taskkill /F /IM chrome.exe /T >nul 2>&1")
+            run_async("start steam://open/games")
         elif action_type == "stop_game_mode":
             self.append_to_log(f">> [SİSTEM]: Oyun modu kapatıldı, normal moda dönüldü.")  
             
@@ -1414,5 +1565,4 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     app = QApplication(sys.argv)
     window = CoreInterface()
-    window.show()
     sys.exit(app.exec_())
